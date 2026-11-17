@@ -57,7 +57,7 @@ function Profile({ m, admin, refresh, back, openEntry, onEdit, onDelete }) {
 export function MembersTab({ members, admin, pid, setPid, reload, refresh, openEntry }) {
   const [q, setQ] = useState(""), [dlg, setDlg] = useState(null);
   const k = nrm(q.trim()), cur = members.find((m) => m._id === pid);
-  const list = members.filter((m) => !k || nrm(m.name).includes(k) || (/^\d+$/.test(k) && String(m.no).startsWith(k)) || nrm(m.phone).includes(k));
+  const list = members.filter((m) => !k || nrm(m.name).includes(k) || (/^\d+$/.test(k) && String(m.no).startsWith(k)) || nrm(m.address).includes(k) || nrm(m.phone).includes(k));
   const saved = async (m) => { setDlg(null); await reload(); setPid(m._id); };
   const del = async () => { if (!confirm("এই সদস্যকে মুছতে চান? আগের কালেকশনের হিসাব থাকবে।")) return; try { await api.del("/members/" + pid); setPid(null); reload(); } catch (e) { alert(e.message); } };
   const importXlsx = async (e) => {
@@ -80,7 +80,7 @@ export function MembersTab({ members, admin, pid, setPid, reload, refresh, openE
     <>
       {admin && <><button className="btn b" style={{ width: "100%", marginBottom: 10 }} onClick={() => setDlg("new")}>＋ নতুন সদস্য যোগ করুন</button>
         <label className="btn" style={{ display: "block", textAlign: "center", marginBottom: 10 }}>📥 এক্সেল থেকে নতুন সদস্য যোগ<input type="file" hidden accept=".xlsx,.xls,.csv" onChange={importXlsx} /></label></>}
-      <input placeholder="🔍 নাম বা সদস্য নং দিয়ে খুঁজুন" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
+      <input placeholder="🔍 নাম, ঠিকানা বা সদস্য নং দিয়ে খুঁজুন" value={q} onChange={(e) => setQ(e.target.value)} style={{ marginBottom: 12 }} />
       {list.length ? <><div className="date" style={{ marginTop: 0 }}>{bn(list.length)} জন সদস্য</div>
         {list.map((m) => <div key={m._id} className="row" style={{ cursor: "pointer" }} onClick={() => setPid(m._id)}><span className="no">নং {bn(m.no)}</span>
           <div className="m"><div className="n">{m.name}</div><div className="s">{[m.phone && bn(m.phone), m.monthly ? "মাসিক " + taka(m.monthly) : "", m.address].filter(Boolean).join(" • ")}</div></div><span style={{ color: "var(--brass)" }}>›</span></div>)}</>

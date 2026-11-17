@@ -22,7 +22,7 @@ function Login({ onLogin }) {
 
 export default function App() {
   const [user, setUser] = useState(null), [ready, setReady] = useState(false), [tab, setTab] = useState("today"), [members, setMembers] = useState([]);
-  const [pid, setPid] = useState(null), [entry, setEntry] = useState(null), [fallback, setFallback] = useState(null), [toast, setToast] = useState(""), [refresh, setRefresh] = useState(0);
+  const [pid, setPid] = useState(null), [entry, setEntry] = useState(null), [fallbacks, setFallbacks] = useState([]), [toast, setToast] = useState(""), [refresh, setRefresh] = useState(0);
   const [range, setRange] = useState([iso(new Date()), iso(new Date())]), [draft, setDraft] = useState([iso(new Date()), iso(new Date())]);
   const ttl = useRef(), admin = user?.role === "admin";
 
@@ -40,7 +40,11 @@ export default function App() {
   const openEntry = (mid, pm) => setEntry({ mid, pm });
   const onDone = (res, m) => {
     setEntry(null); setRefresh((x) => x + 1);
-    if (res?.created && res.sms?.attempted) res.sms.ok ? say("✉️ এসএমএস পাঠানো হয়েছে") : setFallback({ member: m, payment: res.payment, err: res.sms.error });
+    const results = res?.batch || [res];
+    const failed = results.filter((r) => r?.created && r.sms?.attempted && !r.sms.ok)
+      .map((r) => ({ member: m, payment: r.payment, err: r.sms.error }));
+    if (failed.length) setFallbacks((items) => [...items, ...failed]);
+    else if (results.some((r) => r?.created && r.sms?.attempted)) say("✉️ এসএমএস পাঠানো হয়েছে");
   };
   const fab = () => {
     if (!members.length) { setTab("mem"); return alert("আগে সদস্যদের নাম যোগ করুন"); }
@@ -67,7 +71,7 @@ export default function App() {
       </main>
       {admin && !(tab === "mem" && !pid) && <button className="btn b fab" onClick={fab}>＋ নতুন কালেকশন</button>}
       {entry && <EntryDialog members={members} init={entry} onClose={() => setEntry(null)} onDone={onDone} />}
-      {fallback && <SmsFallback {...fallback} onClose={() => setFallback(null)} />}
+      {fallbacks[0] && <SmsFallback {...fallbacks[0]} onClose={() => setFallbacks((items) => items.slice(1))} />}
       {toast && <div style={{ position: "fixed", left: "50%", transform: "translateX(-50%)", bottom: 90, background: "#16332B", color: "#F1E9D2", border: "1px solid #C9A24B", borderRadius: 20, padding: "10px 18px", zIndex: 99, font: "600 14px 'Hind Siliguri',sans-serif" }}>{toast}</div>}
     </>
   );

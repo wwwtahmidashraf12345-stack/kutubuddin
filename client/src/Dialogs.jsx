@@ -9,25 +9,56 @@ export function Modal({ children, onClose }) {
 }
 
 export function EntryDialog({ members, init, onClose, onDone }) {
-  const [mid, setMid] = useState(init.mid), [y, setY] = useState(init.pm.slice(0, 4)), [mo, setMo] = useState(init.pm.slice(5));
-  const [f, setF] = useState({ d: iso(new Date()), a: "", b: "", o: "" }), [ex, setEx] = useState(null), [busy, setBusy] = useState(false);
-  const m = members.find((x) => x._id === mid), pm = y + "-" + mo;
+  const [mid, setMid] = useState(init.mid), [y, setY] = useState(init.pm.slice(0, 4)), [selectedMonths, setSelectedMonths] = useState([init.pm.slice(5)]);
+  const [f, setF] = useState({ d: iso(new Date()), a: "", b: "", o: "" }), [payments, setPayments] = useState([]), [busy, setBusy] = useState(false), [loading, setLoading] = useState(true), [loadError, setLoadError] = useState(false);
+  const m = members.find((x) => x._id === mid);
+  const selectedPms = selectedMonths.map((mo) => y + "-" + mo);
+  const ex = selectedPms.length === 1 ? payments.find((p) => p.paidMonth === selectedPms[0]) || null : null;
   useEffect(() => {
     let ok = true;
+    setLoading(true);
+    setLoadError(false);
+    setPayments([]);
     api.get(`/members/${mid}/payments`).then((list) => {
       if (!ok) return;
-      const r = list.find((p) => p.paidMonth === pm);
-      setEx(r || null);
+      setPayments(list);
+      const r = selectedPms.length === 1 ? list.find((p) => p.paidMonth === selectedPms[0]) : null;
       setF({ d: r ? r.paidDate : iso(new Date()), a: r ? r.amount : m.monthly || "", b: r ? r.receiptNo : "", o: r ? r.note : "" });
-    }).catch((e) => alert(e.message));
+      setLoading(false);
+    }).catch((e) => { if (ok) { alert(e.message); setLoadError(true); setLoading(false); } });
     return () => { ok = false; };
-  }, [mid, pm]);
+  }, [mid]);
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+  const toggleMonth = (mo) => (e) => {
+    const next = e.target.checked ? [...selectedMonths, mo] : selectedMonths.filter((x) => x !== mo);
+    setSelectedMonths(next);
+    if (next.length === 1) {
+      const r = payments.find((p) => p.paidMonth === y + "-" + next[0]);
+      if (r) setF({ d: r.paidDate, a: r.amount, b: r.receiptNo, o: r.note });
+    }
+  };
   const save = async () => {
+    if (loading || loadError) return;
+    if (!selectedPms.length) return alert("অন্তত একটি মাস নির্বাচন করুন");
     if (!(Number(f.a) > 0) || !f.d) return alert("সঠিক পরিমাণ ও তারিখ দিন");
+    const existing = selectedPms.filter((pm) => payments.some((p) => p.paidMonth === pm));
+    const pms = selectedPms.length === 1 && existing.length === 1
+      ? selectedPms
+      : selectedPms.filter((pm) => !existing.includes(pm));
+    if (!pms.length) return alert("নির্বাচিত মাসগুলোতে আগে থেকেই এন্ট্রি আছে");
     setBusy(true);
-    try { onDone(await api.put("/payments", { member: mid, paidMonth: pm, paidDate: f.d, amount: Number(f.a), receiptNo: f.b, note: f.o }), m); }
-    catch (e) { alert(e.message); setBusy(false); }
+    const results = [];
+    try {
+      for (const paidMonth of pms) {
+        results.push(await api.put("/payments", { member: mid, paidMonth, paidDate: f.d, amount: Number(f.a), receiptNo: f.b, note: f.o }));
+      }
+      onDone({ batch: results }, m);
+      if (existing.length) alert(existing.length + "টি আগে-জমা মাস বাদ দেওয়া হয়েছে");
+    } catch (e) {
+      if (results.length) onDone({ batch: results }, m);
+      alert(results.length ? `${results.length}টি মাসে এন্ট্রি হয়েছে; পরের এন্ট্রি ব্যর্থ: ${e.message}` : e.message);
+      setBusy(false);
+    }
   };
   const del = async () => { if (!confirm("এই এন্ট্রি মুছে ফেলতে চান?")) return; try { await api.del("/payments/" + ex._id); onDone(null); } catch (e) { alert(e.message); } };
   const resend = async () => {
@@ -39,10 +70,25 @@ export function EntryDialog({ members, init, onClose, onDone }) {
       <h2>দান এন্ট্রি</h2>
       <label>সদস্য</label>
       <select value={mid} onChange={(e) => setMid(e.target.value)}>{members.map((x) => <option key={x._id} value={x._id}>{bn(x.no)} – {x.name}</option>)}</select>
-      <div style={{ display: "flex", gap: 8 }}>
-        <div style={{ flex: 1 }}><label>বছর</label><select value={y} onChange={(e) => setY(e.target.value)}>{YEARS.map((v) => <option key={v}>{v}</option>)}</select></div>
-        <div style={{ flex: 1 }}><label>মাস</label><select value={mo} onChange={(e) => setMo(e.target.value)}>{MN.map((v, i) => <option key={v} value={String(i + 1).padStart(2, "0")}>{v}</option>)}</select></div>
+      <label>বছর</label><select value={y} onChange={(e) => {
+        const nextYear = e.target.value;
+        setY(nextYear);
+        if (selectedMonths.length === 1) {
+          const r = payments.find((p) => p.paidMonth === nextYear + "-" + selectedMonths[0]);
+          setF(r ? { d: r.paidDate, a: r.amount, b: r.receiptNo, o: r.note } : { d: iso(new Date()), a: m.monthly || "", b: "", o: "" });
+        }
+      }}>{YEARS.map((v) => <option key={v}>{v}</option>)}</select>
+      <label>মাস নির্বাচন করুন</label>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "2px 8px" }}>
+        {MN.map((name, i) => {
+          const mo = String(i + 1).padStart(2, "0"), paid = payments.some((p) => p.paidMonth === y + "-" + mo);
+          return <label key={mo} style={{ display: "flex", alignItems: "center", gap: 5, margin: "4px 0", color: "var(--ink)" }}>
+            <input type="checkbox" checked={selectedMonths.includes(mo)} onChange={toggleMonth(mo)} style={{ width: "auto" }} />
+            {name}{paid && <span style={{ color: "var(--soft)", fontSize: 11 }}>✓</span>}
+          </label>;
+        })}
       </div>
+      <div style={{ color: "var(--soft)", fontSize: 12, marginTop: 4 }}>আগে জমা থাকা মাসগুলো একাধিক মাসের এন্ট্রিতে বাদ থাকবে। একটি মাত্র আগে-জমা মাস নির্বাচন করলে তার তথ্য সম্পাদনা হবে।</div>
       <label>তারিখ</label><input type="date" value={f.d} onChange={set("d")} />
       <label>টাকার পরিমাণ</label><input type="number" inputMode="numeric" value={f.a} onChange={set("a")} placeholder="০" />
       <label>বই / রশিদ নং</label><input value={f.b} onChange={set("b")} placeholder="হাতে লিখুন" />
@@ -51,7 +97,7 @@ export function EntryDialog({ members, init, onClose, onDone }) {
         {ex && m.phone && <button className="btn ghost" onClick={resend}>✉️ এসএমএস</button>}
         {ex && <button className="btn x" onClick={del}>মুছুন</button>}
         <button className="btn ghost" onClick={onClose}>বাতিল</button>
-        <button className="btn b" disabled={busy} onClick={save}>সংরক্ষণ</button>
+        <button className="btn b" disabled={busy || loading || loadError} onClick={save}>সংরক্ষণ</button>
       </div>
     </Modal>
   );
