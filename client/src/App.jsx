@@ -25,6 +25,8 @@ export default function App() {
   const [pid, setPid] = useState(null), [entry, setEntry] = useState(null), [fallbacks, setFallbacks] = useState([]), [toast, setToast] = useState(""), [refresh, setRefresh] = useState(0);
   const [range, setRange] = useState([iso(new Date()), iso(new Date())]), [draft, setDraft] = useState([iso(new Date()), iso(new Date())]);
   const ttl = useRef(), admin = user?.role === "admin";
+  const backState = useRef({ tab, pid, entry, fallbacks });
+  backState.current = { tab, pid, entry, fallbacks };
 
   useLayoutEffect(() => {
     const fit = () => { const t = ttl.current; if (!t) return; let z = 34; t.style.fontSize = z + "px"; while (t.scrollWidth > t.clientWidth && z > 9) { z--; t.style.fontSize = z + "px"; } };
@@ -35,6 +37,20 @@ export default function App() {
   const reload = useCallback(() => api.get("/members").then(setMembers).catch((e) => (e.status === 401 ? logout() : alert(e.message))), [logout]);
   useEffect(() => { api.get("/me").then((d) => setUser(d.user)).catch(() => {}).finally(() => setReady(true)); }, []);
   useEffect(() => { if (user) reload(); }, [user, reload]);
+  useEffect(() => {
+    if (!user) return;
+    const handleBack = () => {
+      const current = backState.current;
+      if (current.entry) setEntry(null);
+      else if (current.fallbacks.length) setFallbacks((items) => items.slice(1));
+      else if (current.pid) setPid(null);
+      else if (current.tab !== "today") setTab("today");
+      window.history.pushState({ app: "madrasa" }, "");
+    };
+    window.history.pushState({ app: "madrasa" }, "");
+    window.addEventListener("popstate", handleBack);
+    return () => window.removeEventListener("popstate", handleBack);
+  }, [user]);
   const say = (t) => { setToast(t); setTimeout(() => setToast(""), 3500); };
 
   const openEntry = (mid, pm) => setEntry({ mid, pm });
